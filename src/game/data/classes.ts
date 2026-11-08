@@ -1,4 +1,5 @@
 import type { Appearance, ClassId, Gender, Stats } from "../types";
+import { hairOptionsFor } from "./hair";
 
 export type ArmorType = "cloth" | "leather" | "mail" | "plate";
 export type AtkStyle = "slash" | "stab" | "cast" | "shoot" | "bash" | "whip";
@@ -142,7 +143,7 @@ export function randomAppearance(gender: Gender): Appearance {
   const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
   return {
     skin: pick(SKIN_TONES),
-    hair: Math.floor(Math.random() * HAIR_NAMES.length),
+    hair: pick(hairOptionsFor(gender)).style, // только причёски, совместимые с ригом/головой пола
     hairColor: pick(HAIR_COLORS),
     eyeColor: pick(EYE_COLORS),
     eyeStyle: Math.floor(Math.random() * EYE_NAMES.length),

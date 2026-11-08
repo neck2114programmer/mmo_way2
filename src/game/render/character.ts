@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Appearance, ClassId, Gender } from "../types";
+import { HAIR_CATALOG, hairUnderHeadgear, type HeadgearKind } from "../data/hair";
 import { basicMat, lathe, limb, mesh, rimify, sphere, stdMat, tube } from "./util";
 import { TIER_PAL, buildWeapon, type WeaponSet } from "./weapons";
 import { buildHeadGeometry, faceShape, faceTexture, hairTexture } from "./face";
@@ -491,7 +492,11 @@ export class CharacterModel {
     }
 
     // ---------------- Причёска ----------------
-    if (!bone && !(o.helm)) this.buildHair(headG, app, hairMat, female, (out.hg === "hat" || out.hg === "hood") && !!o.head, cloth, cloth2);
+    // правила сочетания причёски с головным убором берутся из каталога (data/hair.ts), а не из условий рендера
+    const hairId = HAIR_CATALOG.find((h) => h.style === app.hair)?.id ?? "short_crop";
+    const gearKind: HeadgearKind | null = o.helm ? "helm" : !o.head ? null : out.hg === "hat" || out.hg === "hood" || out.hg === "crown" || out.hg === "horn" ? out.hg : null;
+    const hairRule = gearKind ? hairUnderHeadgear(hairId, gearKind) : "full";
+    if (!bone && hairRule !== "hidden") this.buildHair(headG, app, hairMat, female, hairRule === "cap", cloth, cloth2);
 
     // ---------------- Головной убор ----------------
     const wantsHead = !!o.head || !!o.helm;

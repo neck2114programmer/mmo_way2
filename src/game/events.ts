@@ -65,10 +65,17 @@ export class EventDirector {
 
   night() { return nightOf(this.tod); }
 
+  /** true — состояние приходит с сервера (applySnapshot); локально лишь плавно идут часы между снимками */
+  remote = false;
+  applySnapshot(s: { now: number; tod: number; speed: number; events: WorldEvent[] }) {
+    this.remote = true; this.now = s.now; this.tod = s.tod; this.speed = s.speed; this.events = s.events; this.emit();
+  }
+
   update(dtReal: number) {
     const dt = dtReal * this.speed * 1000;
     this.now += dt;
     this.tod = (this.tod + (dtReal * this.speed) / (25 * 60)) % 1; // сутки = 25 минут, как в игре
+    if (this.remote) return; // события симулирует только сервер
     const night = this.night();
     let changed = false;
     for (const ev of this.events) {

@@ -5,7 +5,7 @@ import type { ZoneId } from "../game/types";
 import { EVENT_ZONES, director, fmtHour, isEventZone, nightOf, playerPos } from "../game/events";
 import { STATUS_COLOR, STATUS_LABEL, WorldMapView, ZoneMap, fmtTime, routeSteps, useDirector } from "./maps";
 
-export function MapTab({ zone, setZone }: { zone: ZoneId; setZone: (z: ZoneId) => void }) {
+export function MapTab({ zone, setZone, isAdmin = false }: { zone: ZoneId; setZone: (z: ZoneId) => void; isAdmin?: boolean }) {
   const d = useDirector();
   const [sel, setSel] = useState<string | null>(null);
   const [layers, setLayers] = useState({ spawns: true, paths: true, buildings: true, portals: true, route: true });
@@ -21,7 +21,7 @@ export function MapTab({ zone, setZone }: { zone: ZoneId; setZone: (z: ZoneId) =
         <div className="panel aspect-[1000/640] shrink-0 overflow-hidden p-1">
           <WorldMapView selectedZone={zone} onZone={setZone} selectedEvent={sel} onEvent={(id) => { setSel(id); const e = d.events.find((x) => x.id === id); if (e) setZone(e.zone); }} />
         </div>
-        <TimeBar />
+        <TimeBar isAdmin={isAdmin} />
         <div className="panel min-h-0 flex-1 overflow-y-auto p-2.5">
           <h3 className="h !mt-0">События мира ({events.length})</h3>
           {events.length === 0 && <p className="text-xs text-white/60">Сейчас всё спокойно. {night > 0.6 ? "Следующее нападение скоро…" : "Ночью (20:00–05:30) на поселения нападают твари — переведите время на ночь."}</p>}
@@ -79,28 +79,36 @@ export function MapTab({ zone, setZone }: { zone: ZoneId; setZone: (z: ZoneId) =
   );
 }
 
-export function TimeBar() {
+/** Отправка служебного действия на сервер (только администраторы); сервер возвращает новый снимок мира. */
+export async function worldAdmin(body: Record<string, unknown>) {
+  const r = await fetch("/api/world", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.ok) director.applySnapshot(await r.json());
+}
+
+export function TimeBar({ isAdmin = false }: { isAdmin?: boolean }) {
   const d = useDirector();
   const [z, setZ] = useState<ZoneId>(EVENT_ZONES[0]);
   const night = nightOf(d.tod);
   return (
     <div className="panel shrink-0 p-2.5 text-xs">
       <div className="flex items-center justify-between"><b>🕒 {fmtHour(d.tod)} <span className="text-white/60">{night > 0.6 ? "🌙 ночь" : night > 0.12 ? "🌅 сумерки" : "☀ день"}</span></b>
-        <span className="text-white/50">симуляция мира</span></div>
-      <input type="range" min={0} max={1} step={0.002} value={d.tod} onChange={(e) => director.setTod(+e.target.value)} className="my-1 w-full" />
-      <div className="flex flex-wrap items-center gap-1.5">
-        {[1, 10, 40].map((s) => <button key={s} className={`btn-s ${director.speed === s ? "btn-on" : ""}`} onClick={() => { director.speed = s; director.setTod(director.tod); }}>×{s}</button>)}
-        <button className="btn-s" onClick={() => director.setTod(0.9)}>🌙 На ночь</button>
-        <button className="btn-s" onClick={() => director.setTod(0.45)}>☀ На день</button>
-      </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <select className="sel" value={z} onChange={(e) => setZ(e.target.value as ZoneId)}>{EVENT_ZONES.map((id) => <option key={id} value={id}>{ZONE_NAMES[id]}</option>)}</select>
-        <button className="btn-s" onClick={() => director.force(z, "raid")}>Тест: налёт</button>
-        <button className="btn-s" onClick={() => director.force(z, "hunter")}>Тест: охотник</button>
-        <button className="btn-s" onClick={() => { const e = director.events.find((x) => x.status === "active"); if (e) director.resolve(e.id, true); }}>Победа</button>
-        <button className="btn-s" onClick={() => { const e = director.events.find((x) => x.status === "active"); if (e) director.resolve(e.id, false); }}>Провал</button>
-      </div>
-      <p className="mt-1 text-[10px] leading-tight text-white/45">Расписание и правила — как в engine.ts (ночь 20:00–05:30, 5 мин, зачёт 150 с). Кнопки «Тест» нужны только для проверки отображения; бой игроков здесь симулируется.</p>
+        <span className="text-white/50">часы и события — с сервера</span></div>
+      {isAdmin && (<>
+        <input type="range" min={0} max={1} step={0.002} value={d.tod} onChange={(e) => void worldAdmin({ action: "setTod", tod: +e.target.value })} className="my-1 w-full" aria-label="Время суток" />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[1, 10, 40].map((s) => <button key={s} className={`btn-s ${d.speed === s ? "btn-on" : ""}`} onClick={() => void worldAdmin({ action: "speed", speed: s })}>×{s}</button>)}
+          <button className="btn-s" onClick={() => void worldAdmin({ action: "setTod", tod: 0.9 })}>🌙 На ночь</button>
+          <button className="btn-s" onClick={() => void worldAdmin({ action: "setTod", tod: 0.45 })}>☀ На день</button>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <select className="sel" value={z} onChange={(e) => setZ(e.target.value as ZoneId)}>{EVENT_ZONES.map((id) => <option key={id} value={id}>{ZONE_NAMES[id]}</option>)}</select>
+          <button className="btn-s" onClick={() => void worldAdmin({ action: "force", zone: z, kind: "raid" })}>Админ: налёт</button>
+          <button className="btn-s" onClick={() => void worldAdmin({ action: "force", zone: z, kind: "hunter" })}>Админ: охотник</button>
+          <button className="btn-s" onClick={() => void worldAdmin({ action: "resolve", ok: true })}>Победа</button>
+          <button className="btn-s" onClick={() => void worldAdmin({ action: "resolve", ok: false })}>Провал</button>
+        </div>
+      </>)}
+      <p className="mt-1 text-[10px] leading-tight text-white/45">Расписание и правила — как в engine.ts (ночь 20:00–05:30, 5 мин, зачёт 150 с). События создаёт и ведёт сервер; бой игроков с нападающими на сервере симулируется.{isAdmin ? " Вы администратор: доступны служебные кнопки." : ""}</p>
     </div>
   );
 }
